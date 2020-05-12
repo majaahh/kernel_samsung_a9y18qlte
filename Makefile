@@ -616,6 +616,9 @@ endif # $(dot-config)
 # Defaults to vmlinux, but the arch makefile usually adds further targets
 all: vmlinux
 
+ifeq ($(cc-name),gcc)
+KBUILD_CFLAGS	+= --param=max-inline-insns-auto=1000
+endif
 ifeq ($(cc-name),clang)
 ifdef CONFIG_LLVM_POLLY
 KBUILD_CFLAGS	+= -mllvm -polly \
