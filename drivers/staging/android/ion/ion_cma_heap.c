@@ -4,8 +4,6 @@
  * Copyright (C) Linaro 2012
  * Author: <benjamin.gaignard@linaro.org> for ST-Ericsson.
  *
- * Copyright (c) 2020, The Linux Foundation. All rights reserved.
- *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
  * may be copied, distributed, and modified under those terms.
@@ -29,8 +27,6 @@
 
 #include "ion.h"
 #include "ion_priv.h"
-
-#define ION_CMA_ALLOCATE_FAILED -1
 
 struct ion_cma_buffer_info {
 	void *cpu_addr;
@@ -69,7 +65,7 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 
 	info = kzalloc(sizeof(struct ion_cma_buffer_info), GFP_KERNEL);
 	if (!info)
-		return ION_CMA_ALLOCATE_FAILED;
+		return -ENOMEM;
 
 	if (!ION_IS_CACHED(flags))
 		info->cpu_addr = dma_alloc_writecombine(dev, len,
@@ -98,7 +94,7 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 
 err:
 	kfree(info);
-	return ION_CMA_ALLOCATE_FAILED;
+	return -ENOMEM;
 }
 
 static void ion_cma_free(struct ion_buffer *buffer)
@@ -223,7 +219,7 @@ struct ion_heap *ion_cma_heap_create(struct ion_platform_heap *data)
 	/* set device as private heaps data, later it will be
 	 * used to make the link with reserved CMA memory */
 	heap->priv = data->priv;
-	heap->type = (enum ion_heap_type)ION_HEAP_TYPE_DMA;
+	heap->type = ION_HEAP_TYPE_DMA;
 	cma_heap_has_outer_cache = data->has_outer_cache;
 	return heap;
 }
@@ -365,7 +361,7 @@ struct ion_heap *ion_cma_secure_heap_create(struct ion_platform_heap *data)
 	 * used to make the link with reserved CMA memory
 	 */
 	heap->priv = data->priv;
-	heap->type = (enum ion_heap_type)ION_HEAP_TYPE_HYP_CMA;
+	heap->type = ION_HEAP_TYPE_HYP_CMA;
 	cma_heap_has_outer_cache = data->has_outer_cache;
 	return heap;
 }

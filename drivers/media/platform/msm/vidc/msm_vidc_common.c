@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2018, 2020, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -712,17 +712,16 @@ static void handle_sys_init_done(enum hal_command_response cmd, void *data)
 	return;
 }
 
-static void put_inst_helper(struct kref *kref)
-{
-	struct msm_vidc_inst *inst = container_of(kref,
-					struct msm_vidc_inst, kref);
-
-	msm_vidc_destroy(inst);
-}
-
-
 static void put_inst(struct msm_vidc_inst *inst)
 {
+	void put_inst_helper(struct kref *kref)
+	{
+		struct msm_vidc_inst *inst = container_of(kref,
+				struct msm_vidc_inst, kref);
+
+		msm_vidc_destroy(inst);
+	}
+
 	if (!inst)
 		return;
 
@@ -2939,9 +2938,11 @@ static int msm_vidc_load_resources(int flipped_state,
 		dprintk(VIDC_ERR, "HW is overloaded, needed: %d max: %d\n",
 			num_mbs_per_sec, max_load_adj);
 		msm_vidc_print_running_insts(core);
+#if 0 /* Samsung skips the overloaded error return  */
 		inst->state = MSM_VIDC_CORE_INVALID;
 		msm_comm_kill_session(inst);
 		return -EBUSY;
+#endif
 	}
 
 	hdev = core->device;
@@ -3105,7 +3106,6 @@ int msm_comm_suspend(int core_id)
 		return -EINVAL;
 	}
 
-	mutex_lock(&core->lock);
 	if (core->state == VIDC_CORE_INVALID) {
 		dprintk(VIDC_ERR,
 				"%s - fw is not in proper state, skip suspend\n",
@@ -3119,7 +3119,6 @@ int msm_comm_suspend(int core_id)
 		dprintk(VIDC_WARN, "Failed to suspend\n");
 
 exit:
-	mutex_unlock(&core->lock);
 	return rc;
 }
 
@@ -4920,7 +4919,9 @@ static int msm_vidc_load_supported(struct msm_vidc_inst *inst)
 				num_mbs_per_sec,
 				max_load_adj);
 			msm_vidc_print_running_insts(inst->core);
+#if 0 /* Samsung skips the overloaded error return  */
 			return -EBUSY;
+#endif
 		}
 	}
 	return 0;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2018, 2020, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -117,14 +117,44 @@ static struct ion_heap_desc ion_heap_meta[] = {
 		.name	= ION_ADSP_HEAP_NAME,
 	},
 	{
+		.id	= ION_SECURE_CAMERA_HEAP_ID,
+		.name	= ION_SECURE_CAMERA_HEAP_NAME,
+	},
+	{
+		.id	= ION_SECURE_CAMERA_SCRATCH_HEAP_ID,
+		.name	= ION_SECURE_CAMERA_SCRATCH_HEAP_NAME,
+	},
+	{
 		.id	= ION_SECURE_DISPLAY_HEAP_ID,
 		.name	= ION_SECURE_DISPLAY_HEAP_NAME,
 	}
 };
 #endif
 
+static int ion_system_heap_size_notifier(struct notifier_block *nb,
+					 unsigned long action, void *data)
+{
+	show_ion_system_heap_size((struct seq_file *)data);
+	return 0;
+}
+
+static struct notifier_block ion_system_heap_nb = {
+	.notifier_call = ion_system_heap_size_notifier,
+};
+
+static int ion_system_heap_pool_size_notifier(struct notifier_block *nb,
+					      unsigned long action, void *data)
+{
+	show_ion_system_heap_pool_size((struct seq_file *)data);
+	return 0;
+}
+
+static struct notifier_block ion_system_heap_pool_nb = {
+	.notifier_call = ion_system_heap_pool_size_notifier,
+};
+
 static int msm_ion_lowmem_notifier(struct notifier_block *nb,
-					unsigned long action, void *data)
+				   unsigned long action, void *data)
 {
 	show_ion_usage(idev);
 	return 0;
@@ -809,15 +839,13 @@ long msm_ion_custom_ioctl(struct ion_client *client,
 		int ret;
 
 		ret = ion_walk_heaps(client, data.prefetch_data.heap_id,
-				     (enum ion_heap_type)
-				     ION_HEAP_TYPE_SECURE_DMA,
-				     (void *)data.prefetch_data.len,
-				     ion_secure_cma_prefetch);
+			ION_HEAP_TYPE_SECURE_DMA,
+			(void *)data.prefetch_data.len,
+			ion_secure_cma_prefetch);
 		if (ret)
 			return ret;
 
 		ret = ion_walk_heaps(client, data.prefetch_data.heap_id,
-				     (enum ion_heap_type)
 				     ION_HEAP_TYPE_SYSTEM_SECURE,
 				     (void *)&data.prefetch_data,
 				     ion_system_secure_heap_prefetch);
@@ -830,16 +858,14 @@ long msm_ion_custom_ioctl(struct ion_client *client,
 		int ret;
 
 		ret = ion_walk_heaps(client, data.prefetch_data.heap_id,
-				     (enum ion_heap_type)
-				     ION_HEAP_TYPE_SECURE_DMA,
-				     (void *)data.prefetch_data.len,
-				     ion_secure_cma_drain_pool);
+			ION_HEAP_TYPE_SECURE_DMA,
+			(void *)data.prefetch_data.len,
+			ion_secure_cma_drain_pool);
 
 		if (ret)
 			return ret;
 
 		ret = ion_walk_heaps(client, data.prefetch_data.heap_id,
-				     (enum ion_heap_type)
 				     ION_HEAP_TYPE_SYSTEM_SECURE,
 				     (void *)&data.prefetch_data,
 				     ion_system_secure_heap_drain);
@@ -1131,6 +1157,9 @@ static int msm_ion_probe(struct platform_device *pdev)
 	idev = new_dev;
 
 	show_mem_notifier_register(&msm_ion_nb);
+	show_mem_extra_notifier_register(&ion_system_heap_nb);
+	show_mem_extra_notifier_register(&ion_system_heap_pool_nb);
+
 	return 0;
 
 freeheaps:
@@ -1151,6 +1180,8 @@ static int msm_ion_remove(struct platform_device *pdev)
 
 	ion_device_destroy(idev);
 	kfree(heaps);
+	show_mem_extra_notifier_unregister(&ion_system_heap_nb);
+	show_mem_extra_notifier_unregister(&ion_system_heap_pool_nb);
 	return 0;
 }
 

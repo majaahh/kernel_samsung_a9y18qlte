@@ -1,4 +1,4 @@
-/* Copyright (c) 2008-2020, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2008-2018, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -19,9 +19,6 @@
 #include <linux/stringify.h>
 #include <linux/types.h>
 #include <linux/debugfs.h>
-#include <linux/of_gpio.h>
-#include <linux/gpio.h>
-#include <linux/interrupt.h>
 
 /* panel id type */
 struct panel_id {
@@ -116,6 +113,15 @@ enum {
 	MDSS_PANEL_POWER_LP2,
 	MDSS_PANEL_POWER_LCD_DISABLED,
 };
+
+#if defined(CONFIG_FB_MSM_MDSS_SAMSUNG)
+enum {
+	MDSS_PANEL_BLANK_BLANK = 0,
+	MDSS_PANEL_BLANK_UNBLANK,
+	MDSS_PANEL_BLANK_LOW_POWER,
+	MDSS_PANEL_BLANK_READY_TO_UNBLANK,
+};
+#endif
 
 enum {
 	MDSS_PANEL_LOW_PERSIST_MODE_OFF = 0,
@@ -313,6 +319,15 @@ enum mdss_intf_events {
 	MDSS_EVENT_REGISTER_CLAMP_HANDLER,
 	MDSS_EVENT_DSI_DYNAMIC_BITCLK,
 	MDSS_EVENT_MAX,
+
+#if defined(CONFIG_FB_MSM_MDSS_SAMSUNG)
+	MDSS_SAMSUNG_EVENT_START,
+	MDSS_SAMSUNG_EVENT_FRAME_UPDATE,
+	MDSS_SAMSUNG_EVENT_FB_EVENT_CALLBACK,
+	MDSS_SAMSUNG_EVENT_PANEL_ESD_RECOVERY,
+	MDSS_SAMSUNG_EVENT_MULTI_RESOLUTION,
+	MDSS_SAMSUNG_EVENT_MAX,
+#endif
 };
 
 /**
@@ -519,6 +534,8 @@ struct mipi_panel_info {
 	char insert_dcs_cmd;
 	char wr_mem_continue;
 	char wr_mem_start;
+	char wr_sidemem_continue;
+	char wr_sidemem_start;
 	char te_sel;
 	char stream;	/* 0 or 1 */
 	char mdp_trigger;
@@ -803,8 +820,6 @@ struct mdss_panel_info {
 	u32 rst_seq_len;
 	u32 vic; /* video identification code */
 	u32 deep_color;
-	bool is_ce_mode; /* CE video format */
-	u8 csc_type;
 	struct mdss_rect roi;
 	struct mdss_dsi_dual_pu_roi dual_roi;
 	int pwm_pmic_gpio;
@@ -932,6 +947,10 @@ struct mdss_panel_info {
 	/* persistence mode on/off */
 	bool persist_mode;
 
+#if defined(CONFIG_FB_MSM_MDSS_SAMSUNG)
+	int panel_state;
+	int blank_state;
+#endif
 	/* stores initial adaptive variable refresh vtotal value */
 	u32 saved_avr_vtotal;
 
@@ -995,7 +1014,6 @@ struct mdss_panel_data {
 	 * and teardown.
 	 */
 	int (*event_handler) (struct mdss_panel_data *pdata, int e, void *arg);
-	enum mdss_mdp_csc_type (*get_csc_type)(struct mdss_panel_data *pdata);
 	struct device_node *(*get_fb_node)(struct platform_device *pdev);
 
 	struct list_head timings_list;
@@ -1005,7 +1023,9 @@ struct mdss_panel_data {
 	/* To store dsc cfg name passed by bootloader */
 	char dsc_cfg_np_name[MDSS_MAX_PANEL_LEN];
 	struct mdss_panel_data *next;
-
+#if defined(CONFIG_FB_MSM_MDSS_SAMSUNG)
+	void *panel_private;
+#endif
 	/*
 	 * Set when the power of the panel is disabled while dsi/mdp
 	 * are still on; panel will recover after unblank
@@ -1013,8 +1033,6 @@ struct mdss_panel_data {
 	bool panel_disable_mode;
 
 	int panel_te_gpio;
-	bool is_te_irq_enabled;
-	struct mutex te_mutex;
 	struct completion te_done;
 };
 
@@ -1025,26 +1043,6 @@ struct mdss_panel_debugfs_info {
 	u32 override_flag;
 	struct mdss_panel_debugfs_info *next;
 };
-
-static inline void panel_update_te_irq(struct mdss_panel_data *pdata,
-					bool enable)
-{
-	if (!pdata) {
-		pr_err("Invalid Params\n");
-		return;
-	}
-
-	mutex_lock(&pdata->te_mutex);
-	if (enable && !pdata->is_te_irq_enabled) {
-		enable_irq(gpio_to_irq(pdata->panel_te_gpio));
-		pdata->is_te_irq_enabled = true;
-	} else if (!enable && pdata->is_te_irq_enabled) {
-		disable_irq(gpio_to_irq(pdata->panel_te_gpio));
-		pdata->is_te_irq_enabled = false;
-	}
-	mutex_unlock(&pdata->te_mutex);
-
-}
 
 /**
  * mdss_get_panel_framerate() - get panel frame rate based on panel information
