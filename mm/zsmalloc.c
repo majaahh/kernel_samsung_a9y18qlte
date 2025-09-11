@@ -168,6 +168,12 @@ static struct dentry *zs_stat_root;
 static struct vfsmount *zsmalloc_mnt;
 #endif
 
+#ifdef CONFIG_ZSWAP_MIGRATION_SUPPORT
+static int zs_page_migration_enabled = 1;
+#else
+static int zs_page_migration_enabled;
+#endif
+
 /*
  * number of size_classes
  */
@@ -429,6 +435,11 @@ static void *zs_zpool_map(void *pool, unsigned long handle,
 	case ZPOOL_MM_RO:
 		zs_mm = ZS_MM_RO;
 		break;
+#ifdef CONFIG_ZSWAP_SAME_PAGE_SHARING
+	case ZPOOL_MM_RO_NOWAIT:
+		zs_mm = ZS_MM_RO_NOWAIT;
+		break;
+#endif
 	case ZPOOL_MM_WO:
 		zs_mm = ZS_MM_WO;
 		break;
@@ -479,7 +490,7 @@ static bool is_zspage_isolated(struct zspage *zspage)
 	return zspage->isolated;
 }
 
-static __maybe_unused int is_first_page(struct page *page)
+static int is_first_page(struct page *page)
 {
 	return PagePrivate(page);
 }
@@ -564,23 +575,20 @@ static int get_size_class_index(int size)
 	return min(zs_size_classes - 1, idx);
 }
 
-/* type can be of enum type zs_stat_type or fullness_group */
 static inline void zs_stat_inc(struct size_class *class,
-				int type, unsigned long cnt)
+				enum zs_stat_type type, unsigned long cnt)
 {
 	class->stats.objs[type] += cnt;
 }
 
-/* type can be of enum type zs_stat_type or fullness_group */
 static inline void zs_stat_dec(struct size_class *class,
-				int type, unsigned long cnt)
+				enum zs_stat_type type, unsigned long cnt)
 {
 	class->stats.objs[type] -= cnt;
 }
 
-/* type can be of enum type zs_stat_type or fullness_group */
 static inline unsigned long zs_stat_get(struct size_class *class,
-				int type)
+				enum zs_stat_type type)
 {
 	return class->stats.objs[type];
 }
@@ -1419,7 +1427,15 @@ void *zs_map_object(struct zs_pool *pool, unsigned long handle,
 	WARN_ON_ONCE(in_interrupt());
 
 	/* From now on, migration cannot move the object */
+#ifdef CONFIG_ZSWAP_SAME_PAGE_SHARING
+	if (mm == ZS_MM_RO_NOWAIT) {
+		if (!trypin_tag(handle))
+			return NULL;
+	} else
+		pin_tag(handle);
+#else
 	pin_tag(handle);
+#endif
 
 	obj = handle_to_obj(handle);
 	obj_to_location(obj, &page, &obj_idx);
@@ -1996,6 +2012,9 @@ bool zs_page_isolate(struct page *page, isolate_mode_t mode)
 	 * Page is locked so zspage couldn't be destroyed. For detail, look at
 	 * lock_zspage in free_zspage.
 	 */
+	if (!zs_page_migration_enabled)
+		return false;
+
 	VM_BUG_ON_PAGE(!PageMovable(page), page);
 	VM_BUG_ON_PAGE(PageIsolated(page), page);
 
