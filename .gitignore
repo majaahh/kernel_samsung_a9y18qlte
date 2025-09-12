@@ -117,7 +117,14 @@ all.config
 # fetched Android config fragments
 android/configs/android-*.cfg
 
+<<<<<<< HEAD
 # Output
 out/
 builds/
 RELEASE/
+=======
+#
+#Ignoring Android.bp link file
+#
+Android.bp
+>>>>>>> 1b822553a8d6516c02796c76f622c2cb45d6ada5

@@ -56,6 +56,7 @@
 #include <linux/ratelimit.h>
 
 #define CREATE_TRACE_POINTS
+#include <trace/events/almk.h>
 #include "trace/lowmemorykiller.h"
 
 static int lmkd_count;
@@ -273,6 +274,53 @@ static unsigned long lowmem_count(struct shrinker *s,
 		global_page_state(NR_INACTIVE_FILE);
 }
 
+static atomic_t shift_adj = ATOMIC_INIT(0);
+static short adj_max_shift = 353;
+module_param_named(adj_max_shift, adj_max_shift, short,
+                   S_IRUGO | S_IWUSR);
+
+/* User knob to enable/disable adaptive lmk feature */
+static int enable_adaptive_lmk;
+module_param_named(enable_adaptive_lmk, enable_adaptive_lmk, int,
+		   S_IRUGO | S_IWUSR);
+
+/*
+ * This parameter controls the behaviour of LMK when vmpressure is in
+ * the range of 90-94. Adaptive lmk triggers based on number of file
+ * pages wrt vmpressure_file_min, when vmpressure is in the range of
+ * 90-94. Usually this is a pseudo minfree value, higher than the
+ * highest configured value in minfree array.
+ */
+static int vmpressure_file_min;
+module_param_named(vmpressure_file_min, vmpressure_file_min, int,
+		   S_IRUGO | S_IWUSR);
+
+enum {
+	VMPRESSURE_NO_ADJUST = 0,
+	VMPRESSURE_ADJUST_ENCROACH,
+	VMPRESSURE_ADJUST_NORMAL,
+};
+
+int adjust_minadj(short *min_score_adj)
+{
+	int ret = VMPRESSURE_NO_ADJUST;
+
+	if (!enable_adaptive_lmk)
+		return 0;
+
+	if (atomic_read(&shift_adj) &&
+	    (*min_score_adj > adj_max_shift)) {
+		if (*min_score_adj == OOM_SCORE_ADJ_MAX + 1)
+			ret = VMPRESSURE_ADJUST_ENCROACH;
+		else
+			ret = VMPRESSURE_ADJUST_NORMAL;
+		*min_score_adj = adj_max_shift;
+	}
+	atomic_set(&shift_adj, 0);
+
+	return ret;
+}
+
 static int test_task_flag(struct task_struct *p, int flag)
 {
 	struct task_struct *t;
@@ -455,6 +503,7 @@ static unsigned long lowmem_scan(struct shrinker *s, struct shrink_control *sc)
 		}
 
 		task_lock(selected);
+		get_task_struct(selected);
 		send_sig(SIGKILL, selected, 0);
 		/*
 		 * FIXME: lowmemorykiller shouldn't abuse global OOM killer
