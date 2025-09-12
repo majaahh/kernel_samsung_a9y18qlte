@@ -34,7 +34,9 @@ make -j$(nproc --all) ARCH=arm64 O=out SUBARCH=arm64 O=out \
     STRIP=${GCC_DIR}/bin/aarch64-linux-android-strip \
     CROSS_COMPILE=${GCC_DIR}/bin/aarch64-linux-android-
 
-if [ -d "ak3" ]; then
+if [[ -d "ak3" ]]; then
+    [[ ! -f "ak3/anykernel.sh" ]] && \
+        git submodule update --init -f -q --checkout --recursive
     mv "out/arch/arm64/boot/Image.gz-dtb" "ak3"
     cd "ak3"
     [ ! -d "$BUILDS_DIR" ] && mkdir -p "$BUILDS_DIR"
