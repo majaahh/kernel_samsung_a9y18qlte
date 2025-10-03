@@ -119,5 +119,5 @@ android/configs/android-*.cfg
 
 # Output
 out/
-builds/
+build/out
 RELEASE/
