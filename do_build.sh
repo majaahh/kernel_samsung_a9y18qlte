@@ -10,16 +10,21 @@ TOOLS_DIR="$(pwd)/tools"
 AK3="$(pwd)/ak3"
 PREV_PATH="$(realpath ..)"
 GCC_DIR="$PREV_PATH/gcc"
+GCC="gcc-linaro-5.5.0-2017.10-x86_64_aarch64-linux-gnu.tar.xz"
 CURRENT_PATH="$(pwd)"
 MKBOOTIMG="$TOOLS_DIR/mkbootimg"
 [[ ! -d "$BUILD_OUT" ]] && mkdir -p $BUILD_OUT
-[[ ! -d "$GCC_DIR" ]] && \
-    git clone --depth=1 -j$(nproc --all) "https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9" "$GCC_DIR"
+
+if [[ ! -d "$GCC_DIR" ]]; then
+    mkdir -p "$GCC_DIR"
+    wget "https://releases.linaro.org/components/toolchain/binaries/latest-5/aarch64-linux-gnu/$GCC" -O "$GCC_DIR/gcc.xz"
+    tar --strip-components=1 -xf "$GCC_DIR/gcc.xz" -C "$GCC_DIR"
+fi
 
 # Exports
 export KBUILD_BUILD_USER="$USER"
 export KBUILD_BUILD_HOST="$HOSTNAME"
-export CROSS_COMPILE=aarch64-linux-android-
+export CROSS_COMPILE=aarch64-linux-gnu-
 export ARCH=arm64
 export SUBARCH=arm64
 export HEADER_ARCH=arm64
@@ -28,15 +33,15 @@ export PATH="$GCC_DIR/bin:$PATH"
 # Compile
 make -j$(nproc --all) O=$OUT $DEFCONFIG
 make -j$(nproc --all) O=$OUT \
-    CC="$GCC_DIR/bin/aarch64-linux-android-gcc" \
-    LD="$GCC_DIR/bin/aarch64-linux-android-ld.bfd" \
-    AR="$GCC_DIR/bin/aarch64-linux-android-ar" \
-    AS="$GCC_DIR/bin/aarch64-linux-android-as" \
-    NM="$GCC_DIR/bin/aarch64-linux-android-nm" \
-    OBJCOPY="$GCC_DIR/bin/aarch64-linux-android-objcopy" \
-    OBJDUMP="$GCC_DIR/bin/aarch64-linux-android-objdump" \
-    STRIP="$GCC_DIR/bin/aarch64-linux-android-strip" \
-    CROSS_COMPILE="$GCC_DIR/bin/aarch64-linux-android-"
+    CC="$GCC_DIR/bin/aarch64-linux-gnu-gcc" \
+    LD="$GCC_DIR/bin/aarch64-linux-gnu-ld.bfd" \
+    AR="$GCC_DIR/bin/aarch64-linux-gnu-ar" \
+    AS="$GCC_DIR/bin/aarch64-linux-gnu-as" \
+    NM="$GCC_DIR/bin/aarch64-linux-gnu-nm" \
+    OBJCOPY="$GCC_DIR/bin/aarch64-linux-gnu-objcopy" \
+    OBJDUMP="$GCC_DIR/bin/aarch64-linux-gnu-objdump" \
+    STRIP="$GCC_DIR/bin/aarch64-linux-gnu-strip" \
+    CROSS_COMPILE="$GCC_DIR/bin/aarch64-linux-gnu-"
 
 [[ ! -f "$AK3/anykernel.sh" ]] && \
     git submodule update --init -f -q --checkout --recursive
