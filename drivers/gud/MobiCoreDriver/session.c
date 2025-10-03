@@ -912,7 +912,7 @@ int session_debug_structs(struct kasnprintf_buf *buf,
 	}
 
 	ret = kasnprintf(buf, "\tsession %pK [%d]: %4x %s ec %d%s\n",
-			 session, kref_read(&session->kref), session_id, type,
+			 session, mc_kref_read(&session->kref), session_id, type,
 			 exit_code, is_closing ? " <closing>" : "");
 	if (ret < 0)
 		return ret;

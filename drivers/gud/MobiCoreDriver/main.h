@@ -101,7 +101,7 @@ ssize_t debug_generic_read(struct file *file, char __user *user_buf,
 int debug_generic_open(struct inode *inode, struct file *file);
 int debug_generic_release(struct inode *inode, struct file *file);
 
-static inline unsigned int kref_read(struct kref *kref)
+static inline unsigned int mc_kref_read(struct kref *kref)
 {
 	return atomic_read(&kref->refcount);
 }

@@ -1432,7 +1432,7 @@ static inline int cbuf_debug_structs(struct kasnprintf_buf *buf,
 {
 	return kasnprintf(buf,
 			  "\tcbuf %pK [%d]: addr %pK uaddr %pK len %u\n",
-			  cbuf, kref_read(&cbuf->kref), (void *)cbuf->addr,
+			  cbuf, mc_kref_read(&cbuf->kref), (void *)cbuf->addr,
 			  (void *)cbuf->uaddr, cbuf->len);
 }
 
@@ -1441,7 +1441,7 @@ static inline int cwsm_debug_structs(struct kasnprintf_buf *buf,
 {
 	return kasnprintf(buf,
 			  "\tcwsm %pK [%d]: buf %pK len %llu flags 0x%x\n",
-			  cwsm, kref_read(&cwsm->kref),
+			  cwsm, mc_kref_read(&cwsm->kref),
 			  (void *)(uintptr_t)cwsm->memref.buffer,
 			  cwsm->memref.size, cwsm->memref.flags);
 }
@@ -1456,12 +1456,12 @@ static int client_debug_structs(struct kasnprintf_buf *buf,
 
 	if (client->pid)
 		ret = kasnprintf(buf, "client %pK [%d]: %s (%d)%s\n",
-				 client, kref_read(&client->kref),
+				 client, mc_kref_read(&client->kref),
 				 client->comm, client->pid,
 				 is_closing ? " <closing>" : "");
 	else
 		ret = kasnprintf(buf, "client %pK [%d]: [kernel]%s\n",
-				 client, kref_read(&client->kref),
+				 client, mc_kref_read(&client->kref),
 				 is_closing ? " <closing>" : "");
 
 	if (ret < 0)
