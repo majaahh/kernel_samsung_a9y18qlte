@@ -676,11 +676,6 @@ KBUILD_CFLAGS   += -O2
 endif
 endif
 
-# Tell compiler to tune the performance of the code for a specified
-# target processor
-KBUILD_CFLAGS += -mcpu=cortex-a53+crc+crypto -mtune=cortex-a53 -funswitch-loops -funroll-loops -fpeel-loops
-KBUILD_AFLAGS += -mcpu=cortex-a53+crc+crypto -mtune=cortex-a53 -funswitch-loops -funroll-loops -fpeel-loops
-
 # Tell gcc to never replace conditional load with a non-conditional one
 KBUILD_CFLAGS	+= $(call cc-option,--param=allow-store-data-races=0)
 KBUILD_CFLAGS	+= $(call cc-option,-fno-allow-store-data-races)
@@ -755,7 +750,6 @@ KBUILD_CPPFLAGS += $(call cc-option,-Qunused-arguments,)
 KBUILD_CFLAGS += $(call cc-disable-warning, format-invalid-specifier)
 KBUILD_CFLAGS += $(call cc-disable-warning, gnu)
 KBUILD_CFLAGS += $(call cc-disable-warning, duplicate-decl-specifier)
-KBUILD_CFLAGS += -Wno-undefined-optimized
 KBUILD_CFLAGS += -Wno-tautological-constant-out-of-range-compare
 
 # Quiet clang warning: comparison of unsigned expression < 0 is always false
