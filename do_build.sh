@@ -9,34 +9,28 @@ OUT="$(pwd)/out"
 TOOLS_DIR="$(pwd)/tools"
 AK3="$(pwd)/ak3"
 PREV_PATH="$(realpath ..)"
-GCC_DIR="$PREV_PATH/gcc"
+CLANG_DIR="$PREV_PATH/clang"
 CURRENT_PATH="$(pwd)"
 MKBOOTIMG="$TOOLS_DIR/mkbootimg"
 [[ ! -d "$BUILD_OUT" ]] && mkdir -p $BUILD_OUT
-[[ ! -d "$GCC_DIR" ]] && \
-    git clone --depth=1 -j$(nproc --all) "https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9" "$GCC_DIR"
+[[ ! -d "$CLANG_DIR" ]] && \
+    git clone --depth=1 -j$(nproc --all) "https://github.com/vijaymalav564/vortex-clang.git" "$CLANG_DIR"
 
 # Exports
 export KBUILD_BUILD_USER="$USER"
 export KBUILD_BUILD_HOST="$HOSTNAME"
-export CROSS_COMPILE=aarch64-linux-android-
 export ARCH=arm64
 export SUBARCH=arm64
 export HEADER_ARCH=arm64
-export PATH="$GCC_DIR/bin:$PATH"
+export PATH="$CLANG_DIR/bin:$PATH"
 
 # Compile
 make -j$(nproc --all) O=$OUT $DEFCONFIG
 make -j$(nproc --all) O=$OUT \
-    CC="$GCC_DIR/bin/aarch64-linux-android-gcc" \
-    LD="$GCC_DIR/bin/aarch64-linux-android-ld.bfd" \
-    AR="$GCC_DIR/bin/aarch64-linux-android-ar" \
-    AS="$GCC_DIR/bin/aarch64-linux-android-as" \
-    NM="$GCC_DIR/bin/aarch64-linux-android-nm" \
-    OBJCOPY="$GCC_DIR/bin/aarch64-linux-android-objcopy" \
-    OBJDUMP="$GCC_DIR/bin/aarch64-linux-android-objdump" \
-    STRIP="$GCC_DIR/bin/aarch64-linux-android-strip" \
-    CROSS_COMPILE="$GCC_DIR/bin/aarch64-linux-android-"
+    CC=clang \
+    LLVM_DIS=llvm-dis AR=llvm-ar NM=llvm-nm LD=ld.lld OBJDUMP=llvm-objdump STRIP=llvm-strip \
+    CLANG_TRIPLE=aarch64-linux-gnu- \
+    CROSS_COMPILE=aarch64-linux-gnu-
 
 [[ ! -f "$AK3/anykernel.sh" ]] && \
     git submodule update --init -f -q --checkout --recursive
