@@ -702,11 +702,6 @@ KBUILD_CFLAGS   += -O2
 endif
 endif
 
-# Tell compiler to tune the performance of the code for a specified
-# target processor
-KBUILD_CFLAGS += -mcpu=cortex-a53+crc+crypto -mtune=cortex-a53 -funswitch-loops -funroll-loops -fpeel-loops
-KBUILD_AFLAGS += -mcpu=cortex-a53+crc+crypto -mtune=cortex-a53 -funswitch-loops -funroll-loops -fpeel-loops
-
 ifdef CONFIG_CC_WERROR
 KBUILD_CFLAGS	+= -Werror
 endif
@@ -788,7 +783,6 @@ KBUILD_CPPFLAGS += $(call cc-option,-Qunused-arguments,)
 KBUILD_CFLAGS += $(call cc-disable-warning, format-invalid-specifier)
 KBUILD_CFLAGS += $(call cc-disable-warning, gnu)
 KBUILD_CFLAGS += $(call cc-disable-warning, duplicate-decl-specifier)
-KBUILD_CFLAGS += -Wno-undefined-optimized
 KBUILD_CFLAGS += -Wno-tautological-constant-out-of-range-compare
 
 # Quiet clang warning: comparison of unsigned expression < 0 is always false
