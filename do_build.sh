@@ -12,6 +12,7 @@ TOOLS_DIR="$(pwd)/tools"
 AK3="$(pwd)/ak3"
 PREV_PATH="$(realpath ..)"
 CLANG_DIR="$PREV_PATH/clang"
+GCC_DIR="$PREV_PATH/gcc"
 CURRENT_PATH="$(pwd)"
 MKBOOTIMG="$TOOLS_DIR/mkbootimg"
 [[ ! -d "$BUILD_OUT" ]] && mkdir -p $BUILD_OUT
@@ -24,15 +25,14 @@ export KBUILD_BUILD_HOST="$HOSTNAME"
 export ARCH=arm64
 export SUBARCH=arm64
 export HEADER_ARCH=arm64
-export PATH="$CLANG_DIR/bin:$PATH"
+export PATH="$CLANG_DIR/bin:$GCC_DIR/bin:$CLANG_DIR/lib:$GCC_DIR/lib:$PATH"
 
 # Compile
 make -j$(nproc --all) O=$OUT $DEFCONFIG
 make -j$(nproc --all) O=$OUT \
     CC=clang \
-    LLVM_DIS=llvm-dis AR=llvm-ar NM=llvm-nm LD=ld.lld OBJDUMP=llvm-objdump STRIP=llvm-strip \
     CLANG_TRIPLE=aarch64-linux-gnu- \
-    CROSS_COMPILE=aarch64-linux-gnu-
+    CROSS_COMPILE=aarch64-linux-androidkernel-
 
 [[ ! -f "$AK3/anykernel.sh" ]] && \
     git submodule update --init -f -q --checkout --recursive
