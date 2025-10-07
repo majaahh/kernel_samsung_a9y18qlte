@@ -67,6 +67,7 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 "	prfm	pstl1strm, %3\n"
 "1:	ldaxr	%w0, %3\n"
 "	add	%w1, %w0, %w5\n"
+"	add	%x1, %x0, %x5\n"
 "	stxr	%w2, %w1, %3\n"
 "	cbnz	%w2, 1b\n",
 	/* LSE atomics */
@@ -107,6 +108,7 @@ static inline int arch_spin_trylock(arch_spinlock_t *lock)
 	"	eor	%w1, %w0, %w0, ror #16\n"
 	"	cbnz	%w1, 2f\n"
 	"	add	%w0, %w0, %3\n"
+    "	add	%x0, %x0, %x3\n"
 	"	stxr	%w1, %w0, %2\n"
 	"	cbnz	%w1, 1b\n"
 	"2:",

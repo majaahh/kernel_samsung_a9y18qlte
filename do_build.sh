@@ -27,10 +27,10 @@ export PATH="$CLANG_DIR/bin:$PATH"
 # Compile
 make -j$(nproc --all) O=$OUT $DEFCONFIG
 make -j$(nproc --all) O=$OUT \
-    CC=clang \
-    LLVM_DIS=llvm-dis AR=llvm-ar NM=llvm-nm LD=ld.lld OBJDUMP=llvm-objdump STRIP=llvm-strip \
-    CLANG_TRIPLE=aarch64-linux-gnu- \
-    CROSS_COMPILE=aarch64-linux-gnu-
+    V=1 KCFLAGS="-save-temps=obj" \
+    ARCH=arm64 \
+    CROSS_COMPILE=aarch64-linux-gnu- \
+    CC=clang
 
 [[ ! -f "$AK3/anykernel.sh" ]] && \
     git submodule update --init -f -q --checkout --recursive

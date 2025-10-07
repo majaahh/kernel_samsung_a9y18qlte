@@ -467,7 +467,11 @@ static void cntvct_read_handler(unsigned int esr, struct pt_regs *regs)
 	isb();
 	if (rt != 31)
 		regs->regs[rt] = arch_counter_get_cntvct();
-	regs->pc += 4;
+    {
+        unsigned long pc = regs->pc;
+        pc += 4;
+        regs->pc = pc;
+    }
 }
 
 static void cntfrq_read_handler(unsigned int esr, struct pt_regs *regs)
@@ -476,7 +480,11 @@ static void cntfrq_read_handler(unsigned int esr, struct pt_regs *regs)
 
 	if (rt != 31)
 		regs->regs[rt] = read_sysreg(cntfrq_el0);
-	regs->pc += 4;
+    {
+        unsigned long pc = regs->pc;
+        pc += 4;
+        regs->pc = pc;
+    }
 }
 
 asmlinkage void __exception do_sysinstr(unsigned int esr, struct pt_regs *regs)
@@ -667,8 +675,12 @@ static int bug_handler(struct pt_regs *regs, unsigned int esr)
 	}
 
 	/* If thread survives, skip over the BUG instruction and continue: */
-	regs->pc += AARCH64_INSN_SIZE;	/* skip BRK and resume */
-	return DBG_HOOK_HANDLED;
+    {
+        unsigned long pc = regs->pc;
+        pc += AARCH64_INSN_SIZE;
+        regs->pc = pc;
+    }
+    return DBG_HOOK_HANDLED;
 }
 
 static struct break_hook bug_break_hook = {
