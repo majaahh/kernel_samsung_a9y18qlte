@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Variables
 DEFCONFIG=a9y18qlte_defconfig
