@@ -337,6 +337,7 @@ scripts/Kbuild.include: ;
 include scripts/Kbuild.include
 
 # Make variables (CC, etc...)
+CPP		= $(CC) -E
 ifneq ($(LLVM),)
 CC		= clang
 LD		= ld.lld
@@ -352,7 +353,6 @@ NM		= $(CROSS_COMPILE)nm
 OBJCOPY		= $(CROSS_COMPILE)objcopy
 OBJDUMP		= $(CROSS_COMPILE)objdump
 endif
-CPP		= $(CC) -E
 AWK		= awk
 GENKSYMS	= scripts/genksyms/genksyms
 INSTALLKERNEL  := installkernel
