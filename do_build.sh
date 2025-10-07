@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 # Variables
 DEFCONFIG=a9y18qlte_defconfig
 ARCHIVE="Kernel-a9y18qlte-$(date +%Y%m%d-%H%M)"
