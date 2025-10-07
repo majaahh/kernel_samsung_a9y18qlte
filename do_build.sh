@@ -65,7 +65,7 @@ if [[ ! -f "$BUILD_OUT/boot.img" ]]; then
     exit 1
 fi
 
-cp -fa "$BUILD_OUT/boot.img" "$AK3/boot.img"
+mv -f "$BUILD_OUT/boot.img" "$AK3/boot.img"
 (
 cd "ak3"
 tar cf "$BUILD_OUT/$ARCHIVE.tar" "boot.img"
