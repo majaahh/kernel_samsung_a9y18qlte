@@ -13,9 +13,21 @@ PREV_PATH="$(realpath ..)"
 GCC_DIR="$PREV_PATH/gcc"
 CURRENT_PATH="$(pwd)"
 MKBOOTIMG="$TOOLS_DIR/mkbootimg"
+KSU=""
 [[ ! -d "$BUILD_OUT" ]] && mkdir -p $BUILD_OUT
 [[ ! -d "$GCC_DIR" ]] && \
     git clone --depth=1 -j$(nproc --all) "https://github.com/LineageOS/android_prebuilts_gcc_linux-x86_aarch64_aarch64-linux-android-4.9" "$GCC_DIR"
+
+while [[ "$1" == "-"* ]]; do
+    if [[ "$1" == "-k" ]] || [[ "$1" == "--ksu" ]]; then
+        KSU="ksu.config"
+    else
+        echo "Unknown argument: $1"
+        exit 1
+    fi
+
+    shift
+done
 
 # Exports
 export KBUILD_BUILD_USER="$USER"
@@ -27,7 +39,7 @@ export HEADER_ARCH=arm64
 export PATH="$GCC_DIR/bin:$PATH"
 
 # Compile
-make -j$(nproc --all) O=$OUT $DEFCONFIG
+make -j$(nproc --all) O=$OUT $DEFCONFIG $KSU
 make -j$(nproc --all) O=$OUT \
     CC="$GCC_DIR/bin/aarch64-linux-android-gcc" \
     LD="$GCC_DIR/bin/aarch64-linux-android-ld.bfd" \
