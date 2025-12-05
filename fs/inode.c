@@ -135,6 +135,7 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 	inode->i_sb = sb;
 	inode->i_blkbits = sb->s_blocksize_bits;
 	inode->i_flags = 0;
+	atomic64_set(&inode->i_sequence, 0);
 	atomic_set(&inode->i_count, 1);
 	inode->i_op = &empty_iops;
 	inode->i_fop = &no_open_fops;
@@ -177,6 +178,9 @@ int inode_init_always(struct super_block *sb, struct inode *inode)
 	mapping_set_gfp_mask(mapping, GFP_HIGHUSER_MOVABLE);
 	mapping->private_data = NULL;
 	mapping->writeback_index = 0;
+#ifdef CONFIG_SDP
+	mapping->userid = 0;
+#endif
 	inode->i_private = NULL;
 	inode->i_mapping = mapping;
 	INIT_HLIST_HEAD(&inode->i_dentry);	/* buggered by rcu freeing */
@@ -632,6 +636,7 @@ again:
 
 	dispose_list(&dispose);
 }
+EXPORT_SYMBOL_GPL(evict_inodes);
 
 /**
  * invalidate_inodes	- attempt to free all inodes on a superblock
@@ -1783,6 +1788,7 @@ int file_update_time(struct file *file)
 	struct inode *inode = file_inode(file);
 	struct timespec now;
 	int sync_it = 0;
+	int need_sync = 0;
 	int ret;
 
 	/* First try to exhaust all avenues to not sync */
@@ -1796,7 +1802,19 @@ int file_update_time(struct file *file)
 	if (!timespec_equal(&inode->i_ctime, &now))
 		sync_it |= S_CTIME;
 
-	if (IS_I_VERSION(inode))
+	/* iversion impacts on "write" performance. This code just filter inodes
+	 * by presence in integrity cache (S_IMA flag, security/integrity/iint.c).
+	 * Because only FIVE uses iversion in Samsung Kernel this patch shouldn't
+	 * affect other code.
+	 * NOTICE: iversion code has been optimized in v4.17-rc4. So this patch should be
+	 * removed since v4.17-rc4
+	 */
+	#ifdef CONFIG_FIVE
+	need_sync = IS_I_VERSION(inode) && (inode->i_flags & S_IMA);
+	#else
+	need_sync = IS_I_VERSION(inode);
+	#endif
+	if (need_sync)
 		sync_it |= S_VERSION;
 
 	if (!sync_it)
@@ -2051,3 +2069,27 @@ void inode_nohighmem(struct inode *inode)
 	mapping_set_gfp_mask(inode->i_mapping, GFP_USER);
 }
 EXPORT_SYMBOL(inode_nohighmem);
+
+/*
+ * Generic function to check FS_IOC_SETFLAGS values and reject any invalid
+ * configurations.
+ *
+ * Note: the caller should be holding i_mutex, or else be sure that they have
+ * exclusive access to the inode structure.
+ */
+int vfs_ioc_setflags_prepare(struct inode *inode, unsigned int oldflags,
+			     unsigned int flags)
+{
+	/*
+	 * The IMMUTABLE and APPEND_ONLY flags can only be changed by
+	 * the relevant capability.
+	 *
+	 * This test looks nicer. Thanks to Pauline Middelink
+	 */
+	if ((flags ^ oldflags) & (FS_APPEND_FL | FS_IMMUTABLE_FL) &&
+	    !capable(CAP_LINUX_IMMUTABLE))
+		return -EPERM;
+
+	return 0;
+}
+EXPORT_SYMBOL(vfs_ioc_setflags_prepare);

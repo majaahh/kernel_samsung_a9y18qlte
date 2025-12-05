@@ -45,6 +45,14 @@ extern void guard_bio_eod(int rw, struct bio *bio);
  */
 extern void __init chrdev_init(void);
 
+#ifdef CONFIG_PROC_DLOG
+/*
+ * dlog_hook.c
+ */
+void dlog_hook(struct dentry *, struct inode *, struct path *);
+void dlog_hook_rmdir(struct dentry *, struct path *);
+#endif
+
 /*
  * namei.c
  */
@@ -123,7 +131,6 @@ extern void inode_add_lru(struct inode *inode);
 extern void inode_io_list_del(struct inode *inode);
 
 extern long get_nr_dirty_inodes(void);
-extern void evict_inodes(struct super_block *);
 extern int invalidate_inodes(struct super_block *, bool);
 
 /*
@@ -153,3 +160,29 @@ extern void mnt_pin_kill(struct mount *m);
  * fs/nsfs.c
  */
 extern struct dentry_operations ns_dentry_operations;
+
+#ifdef CONFIG_FILE_TABLE_DEBUG
+void global_filetable_print_warning_once(void);
+void global_filetable_add(struct file *filp);
+void global_filetable_del(struct file *filp);
+void global_filetable_delayed_print(struct mount *mnt);
+
+#else /* i.e NOT CONFIG_FILE_TABLE_DEBUG */
+
+static inline void global_filetable_print_warning_once(void)
+{
+}
+
+static inline void global_filetable_add(struct file *filp)
+{
+}
+
+static inline void global_filetable_del(struct file *filp)
+{
+}
+
+static inline void global_filetable_delayed_print(struct mount *mnt)
+{
+}
+
+#endif /* CONFIG_FILE_TABLE_DEBUG */
