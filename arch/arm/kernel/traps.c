@@ -29,6 +29,7 @@
 #include <linux/irq.h>
 
 #include <linux/atomic.h>
+#include <asm/arch_timer.h>
 #include <asm/cacheflush.h>
 #include <asm/exception.h>
 #include <asm/unistd.h>
@@ -38,7 +39,8 @@
 #include <asm/tls.h>
 #include <asm/system_misc.h>
 #include <asm/opcodes.h>
-
+#include <linux/sec_debug.h>
+#include <linux/sec_debug_summary.h>
 
 static const char *handler[]= {
 	"prefetch abort",
@@ -263,8 +265,19 @@ static int __die(const char *str, int err, struct pt_regs *regs)
 		 TASK_COMM_LEN, tsk->comm, task_pid_nr(tsk), end_of_stack(tsk));
 
 	if (!user_mode(regs) || in_interrupt()) {
+#ifdef CONFIG_SEC_DEBUG
+		if (THREAD_SIZE + (unsigned long)task_stack_page(tsk) - regs->ARM_sp
+			> THREAD_SIZE) {
+			dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
+					THREAD_SIZE/4 + regs->ARM_sp);
+		} else {
+			dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
+					THREAD_SIZE + (unsigned long)task_stack_page(tsk));
+		}
+#else
 		dump_mem(KERN_EMERG, "Stack: ", regs->ARM_sp,
 			 THREAD_SIZE + (unsigned long)task_stack_page(tsk));
+#endif
 		dump_backtrace(regs, tsk);
 		dump_instr(KERN_EMERG, regs);
 	}
@@ -331,10 +344,14 @@ void die(const char *str, struct pt_regs *regs, int err)
 	unsigned long flags = oops_begin();
 	int sig = SIGSEGV;
 
+	secdbg_sched_msg("!!die!!");
+
 	if (!user_mode(regs))
 		bug_type = report_bug(regs->ARM_pc, regs);
 	if (bug_type != BUG_TRAP_TYPE_NONE)
 		str = "Oops - BUG";
+
+	sec_debug_save_die_info(str, regs);
 
 	if (__die(str, err, regs))
 		sig = 0;
@@ -707,6 +724,42 @@ static int __init arm_mrc_hook_init(void)
 late_initcall(arm_mrc_hook_init);
 
 #endif
+
+static int get_pct_trap(struct pt_regs *regs, unsigned int instr)
+{
+	u64 cntpct;
+	unsigned int res;
+	int rd = (instr >> 12) & 0xF;
+	int rn =  (instr >> 16) & 0xF;
+
+	res = arm_check_condition(instr, regs->ARM_cpsr);
+	if (res == ARM_OPCODE_CONDTEST_FAIL) {
+		regs->ARM_pc += 4;
+		return 0;
+	}
+
+	if (rd == 15 || rn == 15)
+		return 1;
+	cntpct = arch_counter_get_cntpct();
+	regs->uregs[rd] = cntpct;
+	regs->uregs[rn] = cntpct >> 32;
+	regs->ARM_pc += 4;
+	return 0;
+}
+
+static struct undef_hook get_pct_hook = {
+	.instr_mask	= 0x0ff00fff,
+	.instr_val	= 0x0c500f0e,
+	.cpsr_mask	= MODE_MASK,
+	.cpsr_val	= USR_MODE,
+	.fn		= get_pct_trap,
+};
+
+void get_pct_hook_init(void)
+{
+	register_undef_hook(&get_pct_hook);
+}
+EXPORT_SYMBOL(get_pct_hook_init);
 
 /*
  * A data abort trap was taken, but we did not handle the instruction.

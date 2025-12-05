@@ -51,9 +51,6 @@
 #error TEXT_OFFSET must be less than 2MB
 #endif
 
-#define KERNEL_START	_text
-#define KERNEL_END	_end
-
 /*
  * Kernel startup entry point.
  * ---------------------------
@@ -89,7 +86,11 @@ _head:
 	le64sym	_kernel_size_le			// Effective size of kernel image, little-endian
 	le64sym	_kernel_flags_le		// Informative flags, little-endian
 	.quad	0				// reserved
-	.quad	0				// reserved
+#ifdef CONFIG_PROCA
+	le64sym	_proca_conf_offset		// memory info for proca ta
+#else
+	.quad	0xecefecef			// Magic number for proca ta
+#endif
 	.quad	0				// reserved
 	.byte	0x41				// Magic number, "ARM\x64"
 	.byte	0x52
@@ -102,8 +103,6 @@ _head:
 #endif
 
 #ifdef CONFIG_EFI
-	.globl	__efistub_stext_offset
-	.set	__efistub_stext_offset, stext - _head
 	.align 3
 pe_header:
 	.ascii	"PE"
@@ -123,11 +122,11 @@ optional_header:
 	.short	0x20b				// PE32+ format
 	.byte	0x02				// MajorLinkerVersion
 	.byte	0x14				// MinorLinkerVersion
-	.long	_end - stext			// SizeOfCode
+	.long	_end - efi_header_end		// SizeOfCode
 	.long	0				// SizeOfInitializedData
 	.long	0				// SizeOfUninitializedData
 	.long	__efistub_entry - _head		// AddressOfEntryPoint
-	.long	__efistub_stext_offset		// BaseOfCode
+	.long	efi_header_end - _head		// BaseOfCode
 
 extra_header_fields:
 	.quad	0				// ImageBase
@@ -144,7 +143,7 @@ extra_header_fields:
 	.long	_end - _head			// SizeOfImage
 
 	// Everything before the kernel image is considered part of the header
-	.long	__efistub_stext_offset		// SizeOfHeaders
+	.long	efi_header_end - _head		// SizeOfHeaders
 	.long	0				// CheckSum
 	.short	0xa				// Subsystem (EFI application)
 	.short	0				// DllCharacteristics
@@ -188,10 +187,10 @@ section_table:
 	.byte	0
 	.byte	0
 	.byte	0        		// end of 0 padding of section name
-	.long	_end - stext		// VirtualSize
-	.long	__efistub_stext_offset	// VirtualAddress
-	.long	_edata - stext		// SizeOfRawData
-	.long	__efistub_stext_offset	// PointerToRawData
+	.long	_end - efi_header_end	// VirtualSize
+	.long	efi_header_end - _head	// VirtualAddress
+	.long	_edata - efi_header_end	// SizeOfRawData
+	.long	efi_header_end - _head	// PointerToRawData
 
 	.long	0		// PointerToRelocations (0 for executables)
 	.long	0		// PointerToLineNumbers (0 for executables)
@@ -200,20 +199,35 @@ section_table:
 	.long	0xe0500020	// Characteristics (section flags)
 
 	/*
-	 * EFI will load stext onwards at the 4k section alignment
+	 * EFI will load .text onwards at the 4k section alignment
 	 * described in the PE/COFF header. To ensure that instruction
 	 * sequences using an adrp and a :lo12: immediate will function
-	 * correctly at this alignment, we must ensure that stext is
+	 * correctly at this alignment, we must ensure that .text is
 	 * placed at a 4k boundary in the Image to begin with.
 	 */
 	.align 12
+efi_header_end:
 #endif
 
+	__INIT
+
 ENTRY(stext)
+#ifdef CONFIG_RELOCATABLE_KERNEL
+	mov	x22, x1				// x1=PHYS_OFFSET
+	mov	x19, x2				// x2=real TEXT_OFFSET
+	adr_l	x21, __boot_kernel_offset
+	stp	x1, x2, [x21]
+#endif
 	bl	preserve_boot_args
 	bl	el2_setup			// Drop to EL1, w20=cpu_boot_mode
+
+#ifndef CONFIG_RELOCATABLE_KERNEL
 	adrp	x24, __PHYS_OFFSET
 	and	x23, x24, MIN_KIMG_ALIGN - 1	// KASLR offset, defaults to 0
+#else
+	mov	x24, x22		// x24 = PHYS_OFFSET
+	sub	x23, x19, TEXT_OFFSET	// x23 hold offset of KASLR
+#endif	
 	bl	set_cpu_boot_mode_flag
 	bl	__create_page_tables		// x25=TTBR0, x26=TTBR1
 	/*
@@ -222,13 +236,48 @@ ENTRY(stext)
 	 * On return, the CPU will be ready for the MMU to be turned on and
 	 * the TCR will have been set.
 	 */
-	ldr	x27, 0f				// address to jump to after
+#ifndef CONFIG_RELOCATABLE_KERNEL
+	bl	__cpu_setup			// initialise processor
+	adr_l	x27, __primary_switch		// address to jump to after
 						// MMU has been enabled
-	adr_l	lr, __enable_mmu		// return (PIC) address
-	b	__cpu_setup			// initialise processor
+	b	__enable_mmu
+#else
+	bl	__cpu_setup			// initialise processor
+	adr	x27, __relocate_kernel
+	sub	x27, x27, x24
+	mov_q	x12, KIMAGE_VADDR
+	add	x27, x27, x12	// convert to VA
+	b	__enable_mmu
+#endif	
 ENDPROC(stext)
-	.align	3
-0:	.quad	__mmap_switched - (_head - TEXT_OFFSET) + KIMAGE_VADDR
+
+#ifdef CONFIG_RELOCATABLE_KERNEL
+__relocate_kernel:
+	ldr	w9, =__rela_offset		// offset to reloc table
+	ldr	w10, =__rela_size		// size of reloc table
+	mov_q	x11, KIMAGE_VADDR		// default virtual offset
+	add	x11, x11, x23			// actual virtual offset
+	add	x9, x9, x11			// __va(.rela)
+	add	x10, x9, x10			// __va(.rela) + sizeof(.rela)
+
+0:	cmp	x9, x10
+	b.hs	1f
+	ldp	x11, x12, [x9], #24
+	cmp	x12, #R_AARCH64_RELATIVE
+	b.ne	0b
+	ldr	x12, [x9, #-8]
+	add	x12, x12, x23			// relocate origin x23
+	str	x12, [x11, x23]
+	b	0b
+
+1:	adr_l	x8, vectors			// reload VBAR_EL1 with
+	msr	vbar_el1, x8			// relocated address
+	isb
+
+	adr_l	x9,  __primary_switched
+	br	x9
+ENDPROC(__relocate_kernel)
+#endif
 
 /*
  * Preserve the arguments passed by the bootloader in x0 .. x3
@@ -338,7 +387,7 @@ __create_page_tables:
 	cmp	x0, x6
 	b.lo	1b
 
-	ldr	x7, =SWAPPER_MM_MMUFLAGS
+	mov	x7, SWAPPER_MM_MMUFLAGS
 
 	/*
 	 * Create the identity mapping.
@@ -394,12 +443,13 @@ __create_page_tables:
 	 * Map the kernel image (starting with PHYS_OFFSET).
 	 */
 	mov	x0, x26				// swapper_pg_dir
-	ldr	x5, =KIMAGE_VADDR
+	mov_q	x5, KIMAGE_VADDR + TEXT_OFFSET	// compile time __va(_text)
 	add	x5, x5, x23			// add KASLR displacement
 	create_pgd_entry x0, x5, x3, x6
-	ldr	w6, kernel_img_size
-	add	x6, x6, x5
-	mov	x3, x24				// phys offset
+	adrp	x6, _end			// runtime __pa(_end)
+	adrp	x3, _text			// runtime __pa(_text)
+	sub	x6, x6, x3			// _end - _text
+	add	x6, x6, x5			// runtime __va(_end)
 	create_block_map x0, x7, x3, x5, x6
 
 	/*
@@ -414,16 +464,13 @@ __create_page_tables:
 
 	ret	x28
 ENDPROC(__create_page_tables)
-
-kernel_img_size:
-	.long	_end - (_head - TEXT_OFFSET)
 	.ltorg
 
 /*
  * The following fragment of code is executed with the MMU enabled.
  */
 	.set	initial_sp, init_thread_union + THREAD_START_SP
-__mmap_switched:
+__primary_switched:
 	mov	x28, lr				// preserve LR
 
 	adr_l	x8, vectors			// load VBAR_EL1 with virtual
@@ -437,44 +484,6 @@ __mmap_switched:
 	sub	x2, x2, x0
 	bl	__pi_memset
 	dsb	ishst				// Make zero page visible to PTW
-
-#ifdef CONFIG_RELOCATABLE
-
-	/*
-	 * Iterate over each entry in the relocation table, and apply the
-	 * relocations in place.
-	 */
-	adr_l	x8, __dynsym_start		// start of symbol table
-	adr_l	x9, __reloc_start		// start of reloc table
-	adr_l	x10, __reloc_end		// end of reloc table
-
-0:	cmp	x9, x10
-	b.hs	2f
-	ldp	x11, x12, [x9], #24
-	ldr	x13, [x9, #-8]
-	cmp	w12, #R_AARCH64_RELATIVE
-	b.ne	1f
-	add	x13, x13, x23			// relocate
-	str	x13, [x11, x23]
-	b	0b
-
-1:	cmp	w12, #R_AARCH64_ABS64
-	b.ne	0b
-	add	x12, x12, x12, lsl #1		// symtab offset: 24x top word
-	add	x12, x8, x12, lsr #(32 - 3)	// ... shifted into bottom word
-	ldrsh	w14, [x12, #6]			// Elf64_Sym::st_shndx
-	ldr	x15, [x12, #8]			// Elf64_Sym::st_value
-	cmp	w14, #-0xf			// SHN_ABS (0xfff1) ?
-	add	x14, x15, x23			// relocate
-	csel	x15, x14, x15, ne
-	add	x15, x13, x15
-	str	x15, [x11, x23]
-	b	0b
-
-2:	adr_l	x8, kimage_vaddr		// make relocated kimage_vaddr
-	dc	cvac, x8			// value visible to secondaries
-	dsb	sy				// with MMU off
-#endif
 
 #ifdef CONFIG_THREAD_INFO_IN_TASK
         adrp    x4, init_thread_union
@@ -492,6 +501,9 @@ __mmap_switched:
 
 	ldr_l	x4, kimage_vaddr		// Save the offset between
 	sub	x4, x4, x24			// the kernel virtual and
+#ifdef CONFIG_RELOCATABLE_KERNEL
+	sub	x4, x4, x23
+#endif
 	str_l	x4, kimage_voffset, x5		// physical mappings
 
 	mov	x29, #0
@@ -511,13 +523,13 @@ __mmap_switched:
 0:
 #endif
 	b	start_kernel
-ENDPROC(__mmap_switched)
+ENDPROC(__primary_switched)
 
 /*
  * end early head section, begin head code that is also used for
  * hotplug and needs to have the same protections as the text region
  */
-	.section ".text","ax"
+	.section ".idmap.text","ax"
 
 ENTRY(kimage_vaddr)
 	.quad		_text - TEXT_OFFSET
@@ -627,7 +639,7 @@ ENDPROC(el2_setup)
  * Sets the __boot_cpu_mode flag depending on the CPU boot mode passed
  * in x20. See arch/arm64/include/asm/virt.h for more info.
  */
-ENTRY(set_cpu_boot_mode_flag)
+set_cpu_boot_mode_flag:
 	adr_l	x1, __boot_cpu_mode
 	cmp	w20, #BOOT_CPU_MODE_EL2
 	b.ne	1f
@@ -638,6 +650,22 @@ ENTRY(set_cpu_boot_mode_flag)
 	ret
 ENDPROC(set_cpu_boot_mode_flag)
 
+#ifdef CONFIG_RELOCATABLE_KERNEL
+	.pushsection	.text
+ENTRY(__boot_kernel_offset)
+	.quad	0     	//Kernel Physical Address
+	.quad	0	//Kernel TEXT_OFFSET
+	.quad 	TEXT_OFFSET
+	.popsection
+#endif
+
+/*
+ * These values are written with the MMU off, but read with the MMU on.
+ * Writers will invalidate the corresponding address, discarding up to a
+ * 'Cache Writeback Granule' (CWG) worth of data. The linker script ensures
+ * sufficient alignment that the CWG doesn't overlap another section.
+ */
+	.pushsection ".mmuoff.data.write", "aw"
 /*
  * We need to find out the CPU boot mode long after boot, so we need to
  * store it in a writable variable.
@@ -645,11 +673,16 @@ ENDPROC(set_cpu_boot_mode_flag)
  * This is not in .bss, because we set it sufficiently early that the boot-time
  * zeroing of .bss would clobber it.
  */
-	.pushsection	.data..cacheline_aligned
-	.align	L1_CACHE_SHIFT
 ENTRY(__boot_cpu_mode)
 	.long	BOOT_CPU_MODE_EL2
 	.long	BOOT_CPU_MODE_EL1
+/*
+ * The booting CPU updates the failed status @__early_cpu_boot_status,
+ * with MMU turned off.
+ */
+ENTRY(__early_cpu_boot_status)
+	.long 	0
+
 	.popsection
 
 	/*
@@ -660,7 +693,7 @@ ENTRY(secondary_holding_pen)
 	bl	el2_setup			// Drop to EL1, w20=cpu_boot_mode
 	bl	set_cpu_boot_mode_flag
 	mrs	x0, mpidr_el1
-	ldr     x1, =MPIDR_HWID_BITMASK
+	mov_q	x1, MPIDR_HWID_BITMASK
 	and	x0, x0, x1
 	adr_l	x3, secondary_holding_pen_release
 pen:	ldr	x4, [x3]
@@ -676,26 +709,32 @@ ENDPROC(secondary_holding_pen)
 	 */
 ENTRY(secondary_entry)
 	bl	el2_setup			// Drop to EL1
+#ifdef 	CONFIG_RELOCATABLE_KERNEL
+	adr 	x22, __boot_kernel_offset
+	ldp	x24, x19, [x22]
+#endif
 	bl	set_cpu_boot_mode_flag
 	b	secondary_startup
 ENDPROC(secondary_entry)
 
-ENTRY(secondary_startup)
+secondary_startup:
 	/*
 	 * Common entry point for secondary CPUs.
 	 */
+#ifndef CONFIG_RELOCATABLE_KERNEL
 	adrp	x25, idmap_pg_dir
 	adrp	x26, swapper_pg_dir
+#else
+	adr_l	x25, idmap_pg_dir
+	adr_l	x26, swapper_pg_dir
+#endif
 	bl	__cpu_setup			// initialise processor
 
-	ldr	x8, kimage_vaddr
-	ldr	w9, 0f
-	sub	x27, x8, w9, sxtw		// address to jump to after enabling the MMU
+	adr_l	x27, __secondary_switch		// address to jump to after enabling the MMU
 	b	__enable_mmu
 ENDPROC(secondary_startup)
-0:	.long	(_text - TEXT_OFFSET) - __secondary_switched
 
-ENTRY(__secondary_switched)
+__secondary_switched:
 	adr_l	x5, vectors
 	msr	vbar_el1, x5
 	isb
@@ -726,9 +765,8 @@ ENDPROC(__secondary_switched)
  * Checks if the selected granule size is supported by the CPU.
  * If it isn't, park the CPU
  */
-	.section	".idmap.text", "ax"
-__enable_mmu:
-	mrs	x18, sctlr_el1			// preserve old SCTLR_EL1 value
+ENTRY(__enable_mmu)
+	mrs	x22, sctlr_el1			// preserve old SCTLR_EL1 value
 	mrs	x1, ID_AA64MMFR0_EL1
 	ubfx	x2, x1, #ID_AA64MMFR0_TGRAN_SHIFT, 4
 	cmp	x2, #ID_AA64MMFR0_TGRAN_SUPPORTED
@@ -755,7 +793,7 @@ __enable_mmu:
 	 * to take into account by discarding the current kernel mapping and
 	 * creating a new one.
 	 */
-	msr	sctlr_el1, x18			// disable the MMU
+	msr	sctlr_el1, x22			// disable the MMU
 	isb
 	bl	__create_page_tables		// recreate kernel mapping
 
@@ -767,7 +805,6 @@ __enable_mmu:
 	ic	iallu				// flush instructions fetched
 	dsb	nsh				// via old mapping
 	isb
-	add	x27, x27, x23			// relocated __mmap_switched
 #endif
 	br	x27
 ENDPROC(__enable_mmu)
@@ -776,3 +813,38 @@ __no_granule_support:
 	wfe
 	b __no_granule_support
 ENDPROC(__no_granule_support)
+
+__primary_switch:
+#ifdef CONFIG_RELOCATABLE
+	/*
+	 * Iterate over each entry in the relocation table, and apply the
+	 * relocations in place.
+	 */
+	ldr	w9, =__rela_offset		// offset to reloc table
+	ldr	w10, =__rela_size		// size of reloc table
+
+	mov_q	x11, KIMAGE_VADDR		// default virtual offset
+	add	x11, x11, x23			// actual virtual offset
+	add	x9, x9, x11			// __va(.rela)
+	add	x10, x9, x10			// __va(.rela) + sizeof(.rela)
+
+0:	cmp	x9, x10
+	b.hs	1f
+	ldp	x11, x12, [x9], #24
+	ldr	x13, [x9, #-8]
+	cmp	w12, #R_AARCH64_RELATIVE
+	b.ne	0b
+	add	x13, x13, x23			// relocate
+	str	x13, [x11, x23]
+	b	0b
+
+1:
+#endif
+	ldr	x8, =__primary_switched
+	br	x8
+ENDPROC(__primary_switch)
+
+__secondary_switch:
+	ldr	x8, =__secondary_switched
+	br	x8
+ENDPROC(__secondary_switch)
