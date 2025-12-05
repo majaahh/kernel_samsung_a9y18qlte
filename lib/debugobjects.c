@@ -17,6 +17,7 @@
 #include <linux/debugfs.h>
 #include <linux/slab.h>
 #include <linux/hash.h>
+#include <linux/kmemleak.h>
 
 #define ODEBUG_HASH_BITS	14
 #define ODEBUG_HASH_SIZE	(1 << ODEBUG_HASH_BITS)
@@ -100,6 +101,7 @@ static void fill_pool(void)
 		if (!new)
 			return;
 
+		kmemleak_not_leak(new);
 		raw_spin_lock_irqsave(&pool_lock, flags);
 		hlist_add_head(&new->node, &obj_pool);
 		obj_pool_free++;
@@ -568,6 +570,10 @@ void debug_object_free(void *addr, struct debug_obj_descr *descr)
 		debug_print_object(obj, "free");
 		state = obj->state;
 		raw_spin_unlock_irqrestore(&db->lock, flags);
+#if defined(CONFIG_SEC_DEBUG)
+		panic("DEBUG OBJECT FREE: address(0x%p) %s (active state %u) object type: %s\n",
+			addr, obj_states[obj->state], obj->astate, descr->name);
+#endif
 		debug_object_fixup(descr->fixup_free, addr, state);
 		return;
 	default:
