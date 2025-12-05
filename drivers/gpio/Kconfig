@@ -338,6 +338,25 @@ config GPIO_PXA
 	help
 	  Say yes here to support the PXA GPIO device
 
+config GPIO_QPNP_PIN
+	tristate "Qualcomm Technologies, Inc. QPNP GPIO support"
+	depends on SPMI
+	help
+	  Say 'y' here to include support for the Qualcomm Technologies, Inc.
+	  QPNP GPIO driver.  This driver supports Device Tree and allows a
+	  device_node to be registered as a gpio-controller.  It does not handle
+	  GPIO interrupts directly; they are handled via the SPMI arbiter
+	  interrupt driver.
+
+config GPIO_QPNP_PIN_DEBUG
+	bool "Qualcomm Technologies, Inc. QPNP GPIO debug support"
+	depends on GPIO_QPNP_PIN && DEBUG_FS
+	help
+	  Say 'y' here to include debug support for the Qualcomm Technologies,
+	  Inc. QPNP GPIO driver.  This provides a userspace debug interface to
+	  get and set all of the supported features of PMIC GPIO and MPP pins
+	  including those which are managed by the gpio framework.
+
 config GPIO_RCAR
 	tristate "Renesas R-Car GPIO"
 	depends on ARCH_SHMOBILE || COMPILE_TEST
@@ -1023,6 +1042,18 @@ config GPIO_MCP23S08
 	  This provides a GPIO interface supporting inputs and outputs.
 	  The I2C versions of the chips can be used as interrupt-controller.
 
+config GPIO_PCAL6524
+	bool "PCAL6524 GPIO expander"
+	depends on I2C
+	help
+	  GPIO driver for PCAL6524 I2C-based GPIO expander.
+
+config GPIO_KTS1620
+	bool "KTS1620 GPIO expander"
+	depends on I2C
+	help
+	  GPIO driver for KTS1620 I2C-based GPIO expander.
+
 endmenu
 
 menu "USB GPIO expanders"
@@ -1040,5 +1071,11 @@ config GPIO_VIPERBOARD
           of the module parameters.
 
 endmenu
+
+config SEC_GPIO_DVS
+	tristate "setting Samsung GPIO debugging and verification system"
+	help
+	  To verify gpio configurations of devices, set this feature.
+	  This feature should be enabled for user-debug mode.
 
 endif
