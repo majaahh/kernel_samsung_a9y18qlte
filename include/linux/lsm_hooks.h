@@ -1121,22 +1121,22 @@
  *
  * @binder_set_context_mgr
  *	Check whether @mgr is allowed to be the binder context manager.
- *	@mgr contains the task_struct for the task being registered.
+ *	@mgr contains the struct cred for the current binder process.
  *	Return 0 if permission is granted.
  * @binder_transaction
  *	Check whether @from is allowed to invoke a binder transaction call
  *	to @to.
- *	@from contains the task_struct for the sending task.
- *	@to contains the task_struct for the receiving task.
- * @binder_transfer_binder
+ *	@from contains the struct cred for the sending process.
+ *	@to contains the struct cred for the receiving process.
+ * @binder_transfer_binder:
  *	Check whether @from is allowed to transfer a binder reference to @to.
- *	@from contains the task_struct for the sending task.
- *	@to contains the task_struct for the receiving task.
- * @binder_transfer_file
+ *	@from contains the struct cred for the sending process.
+ *	@to contains the struct cred for the receiving process.
+ * @binder_transfer_file:
  *	Check whether @from is allowed to transfer @file to @to.
- *	@from contains the task_struct for the sending task.
+ *	@from contains the struct cred for the sending process.
  *	@file contains the struct file being transferred.
- *	@to contains the task_struct for the receiving task.
+ *	@to contains the struct cred for the receiving process.
  *
  * @ptrace_access_check:
  *	Check permission before allowing the current process to trace the
@@ -1301,13 +1301,13 @@
  */
 
 union security_list_options {
-	int (*binder_set_context_mgr)(struct task_struct *mgr);
-	int (*binder_transaction)(struct task_struct *from,
-					struct task_struct *to);
-	int (*binder_transfer_binder)(struct task_struct *from,
-					struct task_struct *to);
-	int (*binder_transfer_file)(struct task_struct *from,
-					struct task_struct *to,
+	int (*binder_set_context_mgr)(const struct cred *mgr);
+	int (*binder_transaction)(const struct cred *from,
+					const struct cred *to);
+	int (*binder_transfer_binder)(const struct cred *from,
+					const struct cred *to);
+	int (*binder_transfer_file)(const struct cred *from,
+					const struct cred *to,
 					struct file *file);
 
 	int (*ptrace_access_check)(struct task_struct *child,
@@ -1384,6 +1384,8 @@ union security_list_options {
 					size_t *len);
 	int (*inode_create)(struct inode *dir, struct dentry *dentry,
 				umode_t mode);
+	int (*inode_post_create)(struct inode *dir, struct dentry *dentry,
+				umode_t mode);
 	int (*inode_link)(struct dentry *old_dentry, struct inode *dir,
 				struct dentry *new_dentry);
 	int (*inode_unlink)(struct inode *dir, struct dentry *dentry);
@@ -1440,6 +1442,7 @@ union security_list_options {
 					struct fown_struct *fown, int sig);
 	int (*file_receive)(struct file *file);
 	int (*file_open)(struct file *file, const struct cred *cred);
+	int (*file_close)(struct file *file);
 
 	int (*task_create)(unsigned long clone_flags);
 	void (*task_free)(struct task_struct *task);
@@ -1666,6 +1669,7 @@ struct security_hook_heads {
 	struct list_head inode_free_security;
 	struct list_head inode_init_security;
 	struct list_head inode_create;
+	struct list_head inode_post_create;
 	struct list_head inode_link;
 	struct list_head inode_unlink;
 	struct list_head inode_symlink;
@@ -1702,6 +1706,7 @@ struct security_hook_heads {
 	struct list_head file_send_sigiotask;
 	struct list_head file_receive;
 	struct list_head file_open;
+	struct list_head file_close;
 	struct list_head task_create;
 	struct list_head task_free;
 	struct list_head cred_alloc_blank;

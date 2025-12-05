@@ -10,6 +10,7 @@
 #include <linux/flex_proportions.h>
 #include <linux/timer.h>
 #include <linux/workqueue.h>
+#include <linux/kref.h>
 
 struct page;
 struct device;
@@ -136,14 +137,21 @@ struct bdi_writeback {
 struct backing_dev_info {
 	struct list_head bdi_list;
 	unsigned long ra_pages;	/* max readahead in PAGE_CACHE_SIZE units */
+	unsigned long io_pages;	/* max allowed IO size */
 	unsigned int capabilities; /* Device capabilities */
 	congested_fn *congested_fn; /* Function pointer if device is md/dm */
 	void *congested_data;	/* Pointer to aux data for congested func */
 
 	char *name;
+	struct kref refcnt;	/* Reference counter for the structure */
 
 	unsigned int min_ratio;
 	unsigned int max_ratio, max_prop_frac;
+
+	/* approximate write throttle statistics - updated at each throttling */
+	unsigned long last_thresh;  /* global/bdi thresh at the last throttle */
+	unsigned long last_nr_dirty; /* global/bdi dirty at the last throttle */
+	unsigned long paused_total; /* approximated sum of pauses. in jiffies */
 
 	/*
 	 * Sum of avg_write_bw of wbs with dirty inodes.  > 0 if there are
