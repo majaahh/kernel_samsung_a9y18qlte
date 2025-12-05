@@ -20,6 +20,7 @@
 #include <trace/events/irq.h>
 
 #include "internals.h"
+#include <linux/sec_debug.h>
 
 static irqreturn_t bad_chained_irq(int irq, void *dev_id)
 {
@@ -722,9 +723,11 @@ void handle_percpu_devid_irq(struct irq_desc *desc)
 	if (chip->irq_ack)
 		chip->irq_ack(&desc->irq_data);
 
+	sec_debug_irq_sched_log(irq, action->handler, (char *)action->name, IRQ_ENTRY);
 	trace_irq_handler_entry(irq, action);
 	res = action->handler(irq, dev_id);
 	trace_irq_handler_exit(irq, action, res);
+	sec_debug_irq_sched_log(irq, action->handler, (char *)action->name, IRQ_EXIT);
 
 	if (chip->irq_eoi)
 		chip->irq_eoi(&desc->irq_data);
@@ -836,7 +839,8 @@ void irq_modify_status(unsigned int irq, unsigned long clr, unsigned long set)
 	irq_settings_clr_and_set(desc, clr, set);
 
 	irqd_clear(&desc->irq_data, IRQD_NO_BALANCING | IRQD_PER_CPU |
-		   IRQD_TRIGGER_MASK | IRQD_LEVEL | IRQD_MOVE_PCNTXT);
+		   IRQD_TRIGGER_MASK | IRQD_LEVEL | IRQD_MOVE_PCNTXT |
+		   IRQD_AFFINITY_MANAGED);
 	if (irq_settings_has_no_balance_set(desc))
 		irqd_set(&desc->irq_data, IRQD_NO_BALANCING);
 	if (irq_settings_is_per_cpu(desc))
@@ -845,6 +849,8 @@ void irq_modify_status(unsigned int irq, unsigned long clr, unsigned long set)
 		irqd_set(&desc->irq_data, IRQD_MOVE_PCNTXT);
 	if (irq_settings_is_level(desc))
 		irqd_set(&desc->irq_data, IRQD_LEVEL);
+	if (irq_settings_has_affinity_managed_set(desc))
+		irqd_set(&desc->irq_data, IRQD_AFFINITY_MANAGED);
 
 	irqd_set(&desc->irq_data, irq_settings_get_trigger_mask(desc));
 
