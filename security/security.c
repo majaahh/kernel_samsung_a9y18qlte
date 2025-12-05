@@ -26,6 +26,7 @@
 #include <linux/personality.h>
 #include <linux/backing-dev.h>
 #include <net/flow.h>
+#include <linux/task_integrity.h>
 
 #define MAX_LSM_EVM_XATTR	2
 
@@ -130,25 +131,25 @@ int __init security_module_enable(const char *module)
 
 /* Security operations */
 
-int security_binder_set_context_mgr(struct task_struct *mgr)
+int security_binder_set_context_mgr(const struct cred *mgr)
 {
 	return call_int_hook(binder_set_context_mgr, 0, mgr);
 }
 
-int security_binder_transaction(struct task_struct *from,
-				struct task_struct *to)
+int security_binder_transaction(const struct cred *from,
+				const struct cred *to)
 {
 	return call_int_hook(binder_transaction, 0, from, to);
 }
 
-int security_binder_transfer_binder(struct task_struct *from,
-				    struct task_struct *to)
+int security_binder_transfer_binder(const struct cred *from,
+				    const struct cred *to)
 {
 	return call_int_hook(binder_transfer_binder, 0, from, to);
 }
 
-int security_binder_transfer_file(struct task_struct *from,
-				  struct task_struct *to, struct file *file)
+int security_binder_transfer_file(const struct cred *from,
+				  const struct cred *to, struct file *file)
 {
 	return call_int_hook(binder_transfer_file, 0, from, to, file);
 }
@@ -246,6 +247,9 @@ int security_bprm_check(struct linux_binprm *bprm)
 	int ret;
 
 	ret = call_int_hook(bprm_check_security, 0, bprm);
+	if (ret)
+		return ret;
+	ret = five_bprm_check(bprm);
 	if (ret)
 		return ret;
 	return ima_bprm_check(bprm);
@@ -514,6 +518,14 @@ int security_inode_create(struct inode *dir, struct dentry *dentry, umode_t mode
 }
 EXPORT_SYMBOL_GPL(security_inode_create);
 
+int security_inode_post_create(struct inode *dir, struct dentry *dentry,
+			       umode_t mode)
+{
+	if (unlikely(IS_PRIVATE(dir)))
+		return 0;
+	return call_int_hook(inode_post_create, 0, dir, dentry, mode);
+}
+
 int security_inode_link(struct dentry *old_dentry, struct inode *dir,
 			 struct dentry *new_dentry)
 {
@@ -638,6 +650,9 @@ int security_inode_setxattr(struct dentry *dentry, const char *name,
 		ret = cap_inode_setxattr(dentry, name, value, size, flags);
 	if (ret)
 		return ret;
+	ret = five_inode_setxattr(dentry, name, value, size);
+	if (ret)
+		return ret;
 	ret = ima_inode_setxattr(dentry, name, value, size);
 	if (ret)
 		return ret;
@@ -680,6 +695,9 @@ int security_inode_removexattr(struct dentry *dentry, const char *name)
 	ret = call_int_hook(inode_removexattr, 1, dentry, name);
 	if (ret == 1)
 		ret = cap_inode_removexattr(dentry, name);
+	if (ret)
+		return ret;
+	ret = five_inode_removexattr(dentry, name);
 	if (ret)
 		return ret;
 	ret = ima_inode_removexattr(dentry, name);
@@ -794,6 +812,9 @@ int security_mmap_file(struct file *file, unsigned long prot,
 					mmap_prot(file, prot), flags);
 	if (ret)
 		return ret;
+	ret = five_file_mmap(file, prot);
+	if (ret)
+		return ret;
 	return ima_file_mmap(file, prot);
 }
 
@@ -842,7 +863,11 @@ int security_file_open(struct file *file, const struct cred *cred)
 	if (ret)
 		return ret;
 
-	return fsnotify_perm(file, MAY_OPEN);
+	ret = fsnotify_perm(file, MAY_OPEN);
+	if (ret)
+		return ret;
+
+	return five_file_open(file);
 }
 
 int security_task_create(unsigned long clone_flags)
@@ -853,6 +878,7 @@ int security_task_create(unsigned long clone_flags)
 void security_task_free(struct task_struct *task)
 {
 	call_void_hook(task_free, task);
+	five_task_free(task);
 }
 
 int security_cred_alloc_blank(struct cred *cred, gfp_t gfp)
@@ -1622,6 +1648,7 @@ struct security_hook_heads security_hook_heads = {
 	.inode_init_security =
 		LIST_HEAD_INIT(security_hook_heads.inode_init_security),
 	.inode_create =	LIST_HEAD_INIT(security_hook_heads.inode_create),
+	.inode_post_create = LIST_HEAD_INIT(security_hook_heads.inode_post_create),
 	.inode_link =	LIST_HEAD_INIT(security_hook_heads.inode_link),
 	.inode_unlink =	LIST_HEAD_INIT(security_hook_heads.inode_unlink),
 	.inode_symlink =
@@ -1681,6 +1708,7 @@ struct security_hook_heads security_hook_heads = {
 		LIST_HEAD_INIT(security_hook_heads.file_send_sigiotask),
 	.file_receive =	LIST_HEAD_INIT(security_hook_heads.file_receive),
 	.file_open =	LIST_HEAD_INIT(security_hook_heads.file_open),
+	.file_close = LIST_HEAD_INIT(security_hook_heads.file_close),
 	.task_create =	LIST_HEAD_INIT(security_hook_heads.task_create),
 	.task_free =	LIST_HEAD_INIT(security_hook_heads.task_free),
 	.cred_alloc_blank =
