@@ -12,6 +12,7 @@ dts-dirs += mediatek
 dts-dirs += qcom
 dts-dirs += rockchip
 dts-dirs += sprd
+dts-dirs += samsung
 dts-dirs += xilinx
 
 subdir-y	:= $(dts-dirs)

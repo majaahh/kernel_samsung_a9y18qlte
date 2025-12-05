@@ -212,6 +212,11 @@ static void __do_user_fault(struct task_struct *tsk, unsigned long addr,
 		show_regs(regs);
 	}
 
+	if (current->pid == 0x1) {
+		pr_err("[%s] trap before tragedy\n", current->comm);
+		panic("init");
+	}
+
 	tsk->thread.fault_address = addr;
 	tsk->thread.fault_code = esr;
 	si.si_signo = sig;

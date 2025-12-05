@@ -71,11 +71,8 @@ config ARM64
 	select HAVE_DMA_API_DEBUG
 	select HAVE_DMA_ATTRS
 	select HAVE_DMA_CONTIGUOUS
-	select HAVE_DYNAMIC_FTRACE
 	select HAVE_EFFICIENT_UNALIGNED_ACCESS
-	select HAVE_FTRACE_MCOUNT_RECORD
 	select HAVE_FUNCTION_TRACER
-	select HAVE_FUNCTION_GRAPH_TRACER
 	select HAVE_GENERIC_DMA_COHERENT
 	select HAVE_HW_BREAKPOINT if PERF_EVENTS
 	select HAVE_IRQ_TIME_ACCOUNTING
@@ -1205,6 +1202,19 @@ config KEYS_COMPAT
 	depends on COMPAT && KEYS
 
 endmenu
+
+config MACH_A9Y18QLTE_EUR
+	depends on SEC_A9Y18QLTE_PROJECT
+		default n
+		bool "Samsung A9Y18 EUR"
+		help
+		  Support for Samsung A9Y18 EUR device.
+
+config RELOCATABLE_KERNEL 
+	bool "set kernel to relocatable in both virtual and physical address"
+	default n
+	help 	
+	  This configuare will allow you to config the kernel into position independent kernel, with '--PIE' insert into LD script.
 
 menu "Power management options"
 
