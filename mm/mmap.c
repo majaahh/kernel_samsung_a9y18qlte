@@ -49,6 +49,10 @@
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>
 
+#ifdef CONFIG_MSM_APP_SETTINGS
+#include <asm/app_api.h>
+#endif
+
 #include "internal.h"
 
 #ifndef arch_mmap_check
@@ -201,6 +205,13 @@ int __vm_enough_memory(struct mm_struct *mm, long pages, int cap_sys_admin)
 		 * cache and most inode caches should fall into this
 		 */
 		free += global_page_state(NR_SLAB_RECLAIMABLE);
+
+		/*
+		 * Part of the kernel memory, which can be released
+		 * under memory pressure.
+		 */
+		free += global_page_state(
+			NR_INDIRECTLY_RECLAIMABLE_BYTES) >> PAGE_SHIFT;
 
 		/*
 		 * Leave reserved pages. The pages are not for anonymous pages.
@@ -1341,6 +1352,11 @@ unsigned long do_mmap(struct file *file, unsigned long addr,
 	if (!len)
 		return -EINVAL;
 
+#ifdef CONFIG_MSM_APP_SETTINGS
+	if (use_app_setting)
+		apply_app_setting_bit(file);
+#endif
+
 	/*
 	 * Does the application expect PROT_READ to imply PROT_EXEC?
 	 *
@@ -1993,9 +2009,19 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	struct mm_struct *mm = current->mm;
 	struct vm_area_struct *vma, *prev;
 	struct vm_unmapped_area_info info;
+	static DEFINE_RATELIMIT_STATE(mmap_rs, DEFAULT_RATELIMIT_INTERVAL,
+						DEFAULT_RATELIMIT_BURST);
 
-	if (len > TASK_SIZE - mmap_min_addr)
+	if (len > TASK_SIZE - mmap_min_addr) {
+		if (__ratelimit(&mmap_rs)) {
+			printk(KERN_ERR "%s %d - (len > TASK_SIZE - mmap_min_addr) len=0x%lx "
+				"TASK_SIZE=0x%lx mmap_min_addr=0x%lx pid=%d total_vm=0x%lx addr=0x%lx\n",
+				__func__, __LINE__,
+				len, TASK_SIZE, mmap_min_addr, current->pid,
+				current->mm->total_vm, addr);
+		}
 		return -ENOMEM;
+	}
 
 	if (flags & MAP_FIXED)
 		return addr;
@@ -2014,7 +2040,19 @@ arch_get_unmapped_area(struct file *filp, unsigned long addr,
 	info.low_limit = mm->mmap_base;
 	info.high_limit = TASK_SIZE;
 	info.align_mask = 0;
-	return vm_unmapped_area(&info);
+	addr = vm_unmapped_area(&info);
+	if (addr == -ENOMEM) {
+		if (__ratelimit(&mmap_rs)) {
+			printk(KERN_ERR "%s %d - NOMEM from vm_unmapped_area "
+				"pid=%d total_vm=0x%lx flags=0x%lx length=0x%lx low_limit=0x%lx "
+				"high_limit=0x%lx align_mask=0x%lx\n",
+				__func__, __LINE__,
+				current->pid, current->mm->total_vm,
+				info.flags, info.length, info.low_limit,
+				info.high_limit, info.align_mask);
+		}
+	}
+	return addr;
 }
 #endif
 
@@ -2032,10 +2070,20 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 	struct mm_struct *mm = current->mm;
 	unsigned long addr = addr0;
 	struct vm_unmapped_area_info info;
+	static DEFINE_RATELIMIT_STATE(mmap_rs, DEFAULT_RATELIMIT_INTERVAL,
+						DEFAULT_RATELIMIT_BURST);
 
 	/* requested length too big for entire address space */
-	if (len > TASK_SIZE - mmap_min_addr)
+	if (len > TASK_SIZE - mmap_min_addr) {
+		if (__ratelimit(&mmap_rs)) {
+			printk(KERN_ERR "%s %d - (len > TASK_SIZE - mmap_min_addr) len=%lx "
+				"TASK_SIZE=0x%lx mmap_min_addr=0x%lx pid=%d total_vm=0x%lx addr=0x%lx\n",
+				__func__, __LINE__,
+				len, TASK_SIZE, mmap_min_addr, current->pid,
+				current->mm->total_vm, addr);
+		}
 		return -ENOMEM;
+	}
 
 	if (flags & MAP_FIXED)
 		return addr;
@@ -2069,6 +2117,17 @@ arch_get_unmapped_area_topdown(struct file *filp, const unsigned long addr0,
 		info.low_limit = TASK_UNMAPPED_BASE;
 		info.high_limit = TASK_SIZE;
 		addr = vm_unmapped_area(&info);
+	}
+	if (addr == -ENOMEM) {
+		if (__ratelimit(&mmap_rs)) {
+			printk(KERN_ERR "%s %d - NOMEM from vm_unmapped_area "
+				"pid=%d total_vm=0x%lx flags=0x%lx length=0x%lx low_limit=0x%lx "
+				"high_limit=0x%lx align_mask=0x%lx\n",
+				__func__, __LINE__,
+				current->pid, current->mm->total_vm,
+				info.flags, info.length, info.low_limit,
+				info.high_limit, info.align_mask);
+		}
 	}
 
 	return addr;
