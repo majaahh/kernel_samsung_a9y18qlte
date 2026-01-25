@@ -278,7 +278,6 @@ static unsigned long oops_begin(void)
 	unsigned long flags;
 
 	oops_enter();
-	secdbg_sched_msg("!!die!!");
 
 	/* racy, but better than risking deadlock. */
 	raw_local_irq_save(flags);
